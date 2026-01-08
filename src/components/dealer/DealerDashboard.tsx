@@ -45,7 +45,7 @@ interface DealerDashboardProps {
   setItemPrices: (prices: ItemPrices) => void
 }
 
-function DealerDashboard({ user, orders, setOrders, itemPrices, setItemPrices }: DealerDashboardProps): JSX.Element {
+function DealerDashboard({  orders, setOrders, itemPrices, setItemPrices }: DealerDashboardProps): JSX.Element {
   const [aggregatedOrders, setAggregatedOrders] = useState<AggregatedOrder[]>([])
   const [filterByItem, setFilterByItem] = useState<string>('')
   const [showPriceForm, setShowPriceForm] = useState<boolean>(false)
