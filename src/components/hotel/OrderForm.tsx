@@ -43,26 +43,48 @@ function OrderForm({ user, orders, setOrders, onClose }: OrderFormProps): JSX.El
     }
   }
 
-  const handleSubmit = (): void => {
+  const handleSubmit = async (): Promise<void> => {
     if (items.length === 0) return
 
-    const today = new Date().toISOString().split('T')[0]
-    const newOrders: Order[] = items.map(item => ({
-      id: 'order_' + Date.now() + Math.random(),
+    const apiPayload = {
       hotelId: user.id,
       hotelName: user.name,
-      itemName: item.itemName,
-      quantity: parseFloat(item.quantity),
-      unit: item.unit,
-      date: today,
-      status: 'pending',
-      dealerNote: '',
-      timestamp: new Date().toISOString()
-    }))
+      items: items.map(item => ({
+        itemName: item.itemName,
+        quantity: parseFloat(item.quantity),
+        unit: item.unit
+      }))
+    }
 
-    setOrders([...orders, ...newOrders])
-    setItems([])
-    onClose()
+    try {
+      const response = await fetch('https://backend-apis-8yam.onrender.com/orders/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(apiPayload)
+      })
+
+      if (response.ok) {
+        const today = new Date().toISOString().split('T')[0]
+        const newOrders: Order[] = items.map(item => ({
+          id: 'order_' + Date.now() + Math.random(),
+          hotelId: user.id,
+          hotelName: user.name,
+          itemName: item.itemName,
+          quantity: parseFloat(item.quantity),
+          unit: item.unit,
+          date: today,
+          status: 'pending',
+          dealerNote: '',
+          timestamp: new Date().toISOString()
+        }))
+
+        setOrders([...orders, ...newOrders])
+        setItems([])
+        onClose()
+      }
+    } catch (error) {
+      console.error('Error creating order:', error)
+    }
   }
 
   return (

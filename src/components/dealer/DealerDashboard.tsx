@@ -21,20 +21,26 @@ interface PriceData {
 
 type ItemPrices = Record<string, PriceData>
 
-interface HotelOrder {
-  orderId: string
-  hotelId: string
-  hotelName: string
-  quantity: number
-  status: 'pending' | 'partial' | 'completed' | 'unavailable'
-}
-
-interface AggregatedOrder {
+interface DashboardItem {
   itemName: string
   totalQuantity: number
   unit: string
-  hotels: HotelOrder[]
-  price: PriceData
+  hotelId: string
+}
+
+interface HotelData {
+  totalHotels: number
+  items: DashboardItem[]
+}
+
+interface DashboardResponse {
+  date: string
+  summary: {
+    totalHotels: number
+    totalPendingItems: number
+    byItem: Record<string, number>
+  }
+  byHotel: Record<string, HotelData>
 }
 
 interface DealerDashboardProps {
@@ -45,40 +51,25 @@ interface DealerDashboardProps {
   setItemPrices: (prices: ItemPrices) => void
 }
 
-function DealerDashboard({  orders, setOrders, itemPrices, setItemPrices }: DealerDashboardProps): JSX.Element {
-  const [aggregatedOrders, setAggregatedOrders] = useState<AggregatedOrder[]>([])
+function DealerDashboard({ itemPrices, setItemPrices }: DealerDashboardProps): JSX.Element {
+  const [dashboardData, setDashboardData] = useState<DashboardResponse | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
   const [filterByItem, setFilterByItem] = useState<string>('')
   const [showPriceForm, setShowPriceForm] = useState<boolean>(false)
   const [priceFormData, setPriceFormData] = useState({ itemName: '', price: '', unit: 'kg' })
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    const todayOrders = orders.filter(o => o.date === today)
-    
-    const aggregated: Record<string, AggregatedOrder> = {}
-    todayOrders.forEach(order => {
-      const key = order.itemName.toLowerCase()
-      if (!aggregated[key]) {
-        aggregated[key] = {
-          itemName: order.itemName,
-          totalQuantity: 0,
-          unit: order.unit,
-          hotels: [],
-          price: itemPrices[key] || { amount: 0, unit: order.unit }
-        }
-      }
-      aggregated[key].totalQuantity += parseFloat(order.quantity.toString())
-      aggregated[key].hotels.push({
-        orderId: order.id,
-        hotelId: order.hotelId,
-        hotelName: order.hotelName,
-        quantity: order.quantity,
-        status: order.status
+    fetch('https://backend-apis-8yam.onrender.com/dealer/dealer/dashboard')
+      .then(res => res.json())
+      .then(data => {
+        setDashboardData(data)
+        setLoading(false)
       })
-    })
-
-    setAggregatedOrders(Object.values(aggregated))
-  }, [orders, itemPrices])
+      .catch(err => {
+        console.error('Failed to fetch dashboard data', err)
+        setLoading(false)
+      })
+  }, [])
 
   const handleAddPrice = (): void => {
     if (priceFormData.itemName && priceFormData.price) {
@@ -102,42 +93,77 @@ function DealerDashboard({  orders, setOrders, itemPrices, setItemPrices }: Deal
     setItemPrices(newPrices)
   }
 
-  const handleRemoveHotelOrder = (orderId: string): void => {
-    setOrders(orders.filter(o => o.id !== orderId))
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-600"></div>
+      </div>
+    )
   }
 
-  const handleUpdateAvailability = (itemName: string, status: 'pending' | 'partial' | 'completed' | 'unavailable', note = ''): void => {
-    const today = new Date().toISOString().split('T')[0]
-    setOrders(orders.map(o => 
-      o.date === today && o.itemName === itemName
-        ? { ...o, status, dealerNote: note }
-        : o
-    ))
+  if (!dashboardData) {
+    return <div className="text-center py-12 text-red-600 font-bold text-xl">Failed to load dashboard data.</div>
   }
 
-  const uniqueHotels = [...new Set(aggregatedOrders.flatMap(a => a.hotels.map(h => h.hotelName)))]
-  const totalValue = aggregatedOrders.reduce((sum, agg) => sum + (agg.totalQuantity * (agg.price?.amount || 0)), 0)
+  // Transform API data for "By Item" view
+  const aggregatedItems: Record<string, { totalQuantity: number, unit: string, hotels: { name: string, quantity: number }[] }> = {}
+  
+  Object.entries(dashboardData.byHotel).forEach(([hotelName, data]) => {
+    data.items.forEach(item => {
+      if (!aggregatedItems[item.itemName]) {
+        aggregatedItems[item.itemName] = {
+          totalQuantity: 0,
+          unit: item.unit,
+          hotels: []
+        }
+      }
+      aggregatedItems[item.itemName].hotels.push({
+        name: hotelName,
+        quantity: item.totalQuantity
+      })
+    })
+  })
 
-  let filteredOrders = aggregatedOrders
+  // Sync totals with summary for accuracy
+  Object.keys(aggregatedItems).forEach(key => {
+    if (dashboardData.summary.byItem[key]) {
+      aggregatedItems[key].totalQuantity = dashboardData.summary.byItem[key]
+    }
+  })
+
+  let displayItems = Object.entries(aggregatedItems).map(([name, data]) => ({
+    itemName: name,
+    ...data
+  }))
+
   if (filterByItem) {
-    filteredOrders = aggregatedOrders.filter(a => a.itemName.toLowerCase().includes(filterByItem.toLowerCase()))
+    displayItems = displayItems.filter(i => i.itemName.toLowerCase().includes(filterByItem.toLowerCase()))
   }
+
+  const totalValue = displayItems.reduce((sum, item) => {
+    const price = itemPrices[item.itemName.toLowerCase()]?.amount || 0
+    return sum + (item.totalQuantity * price)
+  }, 0)
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-800">Dealer Dashboard <span className="text-sm font-normal text-gray-500 ml-2">{dashboardData.date}</span></h1>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="stat-card">
           <p className="text-gray-600 text-sm font-semibold">Total Items</p>
-          <p className="text-3xl font-bold text-blue-600 mt-2">{filteredOrders.length}</p>
+          <p className="text-3xl font-bold text-blue-600 mt-2">{Object.keys(dashboardData.summary.byItem).length}</p>
         </div>
         <div className="stat-card">
           <p className="text-gray-600 text-sm font-semibold">Hotels Ordering</p>
-          <p className="text-3xl font-bold text-blue-600 mt-2">{uniqueHotels.length}</p>
+          <p className="text-3xl font-bold text-blue-600 mt-2">{dashboardData.summary.totalHotels}</p>
         </div>
         <div className="stat-card">
           <p className="text-gray-600 text-sm font-semibold">Pending Items</p>
           <p className="text-3xl font-bold text-yellow-600 mt-2">
-            {filteredOrders.filter(a => a.hotels.some(h => h.status === 'pending')).length}
+            {dashboardData.summary.totalPendingItems}
           </p>
         </div>
         <div className="stat-card">
@@ -233,82 +259,47 @@ function DealerDashboard({  orders, setOrders, itemPrices, setItemPrices }: Deal
       </div>
 
       <div className="space-y-6">
-        {filteredOrders.map((agg, idx) => (
-          <div key={idx} className="card fade-in">
-            <div className="flex justify-between items-start mb-4 pb-4 border-b">
-              <div>
-                <h3 className="text-xl font-bold">{agg.itemName}</h3>
-                <p className="text-gray-600">Total: {agg.totalQuantity} {agg.unit}</p>
+        {displayItems.map((item, idx) => {
+          const unitPrice = itemPrices[item.itemName.toLowerCase()]?.amount || 0
+          const itemTotalValue = item.totalQuantity * unitPrice
+          
+          return (
+            <div key={idx} className="card fade-in hover:shadow-lg transition-shadow duration-300">
+              <div className="flex justify-between items-start mb-4 pb-4 border-b border-gray-100">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-800">{item.itemName}</h3>
+                  <p className="text-gray-500 font-medium mt-1">Total Required: <span className="text-blue-600 text-lg">{item.totalQuantity} {item.unit}</span></p>
+                </div>
+                {unitPrice > 0 && (
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">Est. Value</p>
+                    <p className="text-xl font-bold text-green-600">₹{itemTotalValue.toFixed(2)}</p>
+                  </div>
+                )}
               </div>
-            </div>
 
-            <div className="mb-6">
-              <h4 className="font-semibold mb-3">📦 Orders by Hotel:</h4>
-              <div className="space-y-2">
-                {agg.hotels.map((hotel, hIdx) => {
-                  const total = hotel.quantity * (agg.price?.amount || 0)
-                  return (
-                    <div key={hIdx} className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border">
-                      <div>
-                        <p className="font-semibold">{hotel.hotelName}</p>
-                        <p className="text-sm text-gray-600">{hotel.quantity} {agg.unit}</p>
-                        {agg.price?.amount > 0 && (
-                          <p className="text-green-600 font-semibold">₹{total.toFixed(2)}</p>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <span className={`px-3 py-1 rounded-full text-sm ${
-                          hotel.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                        }`}>
-                          {hotel.status}
-                        </span>
-                        <button 
-                          onClick={() => handleRemoveHotelOrder(hotel.orderId)} 
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          ✕
-                        </button>
-                      </div>
+              <div className="bg-gray-50 rounded-xl p-4">
+                <h4 className="font-semibold text-gray-700 mb-3 flex items-center">
+                  <span className="bg-blue-100 text-blue-600 p-1 rounded mr-2 text-xs">🏨</span> 
+                  Hotel Breakdown
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {item.hotels.map((hotel, hIdx) => (
+                    <div key={hIdx} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm flex justify-between items-center">
+                      <span className="font-medium text-gray-700">{hotel.name}</span>
+                      <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full font-bold text-sm">
+                        {hotel.quantity} {item.unit}
+                      </span>
                     </div>
-                  )
-                })}
+                  ))}
+                </div>
               </div>
             </div>
-
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <p className="font-semibold mb-3">Update Status:</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <button 
-                  onClick={() => handleUpdateAvailability(agg.itemName, 'completed', '')} 
-                  className="btn-primary text-sm py-2 pulse-btn"
-                >
-                  ✓ Available
-                </button>
-                <button 
-                  onClick={() => {
-                    const note = prompt('Shortage note:')
-                    if(note) handleUpdateAvailability(agg.itemName, 'partial', note)
-                  }} 
-                  className="btn-warning text-sm py-2 bg-yellow-500 hover:bg-yellow-600 pulse-btn"
-                >
-                  ⚠ Partial
-                </button>
-                <button 
-                  onClick={() => {
-                    const note = prompt('Reason:')
-                    if(note) handleUpdateAvailability(agg.itemName, 'unavailable', note)
-                  }} 
-                  className="btn-danger text-sm py-2 pulse-btn"
-                >
-                  ✕ Not Available
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {filteredOrders.length === 0 && (
+      {displayItems.length === 0 && (
         <div className="text-center py-12">
           <p className="text-gray-500 text-lg">No orders for today</p>
         </div>

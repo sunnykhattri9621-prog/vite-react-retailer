@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import MOCK_USERS, { User } from '../../data/mockUsers'
+import  { User } from '../../data/mockUsers'
+import { login } from '../../services/api'
 
 interface LoginPageProps {
   setCurrentUser: (user: User) => void
@@ -15,16 +16,31 @@ function LoginPage({ setCurrentUser, setUserType }: LoginPageProps): JSX.Element
   const handleLogin = (e: React.FormEvent<HTMLFormElement>): void => {
     e.preventDefault()
     setError('')
-
-    const users = loginType === 'hotel' ? MOCK_USERS.hotels : MOCK_USERS.dealers
-    const user = users.find(u => u.email === email && u.password === password)
-
-    if (user) {
-      setCurrentUser(user)
-      setUserType(loginType)
-    } else {
-      setError('Invalid email or password')
+    let obj = {
+      email: email,
+      password: password,
     }
+
+    const loginPromise = loginType === 'dealer'
+      ? fetch('https://backend-apis-8yam.onrender.com/dealer/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(obj)
+        }).then(res => res.ok ? res.json() : null)
+      : login(obj)
+
+    loginPromise.then((res: any) => {
+      if (res) {
+        const user = { ...res, id: res.hotelId || res.id }
+        setCurrentUser(user)
+        setUserType(loginType)
+      } else {
+        setError('Invalid email or password')
+      }
+    }).catch(() => {
+      setError('Login failed')
+    })
+    
   }
 
   return (
