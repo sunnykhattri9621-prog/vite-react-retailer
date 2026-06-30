@@ -19,7 +19,7 @@ export const get = async (url: string) => {
   }
 }
 
-export const post = async (url: string, data: any) => {
+export const post = async (url: string, data: unknown) => {
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -42,7 +42,7 @@ export const post = async (url: string, data: any) => {
 
 // 2. Create one login method that internally calls post method
 // 3. Use the mentioned URL for the login api call
-export const login = async (credentials: any) => {
+export const login = async (credentials: unknown) => {
   const LOGIN_URL = 'https://backend-apis-8yam.onrender.com/login'
   // Passes the object (credentials) coming from where the function is called
   return await post(LOGIN_URL, credentials)
