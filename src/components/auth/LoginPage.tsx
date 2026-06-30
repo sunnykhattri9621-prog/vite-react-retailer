@@ -1,10 +1,18 @@
 import { useState } from 'react'
-import  { User } from '../../data/mockUsers'
+import { User } from '../../data/mockUsers'
 import { login } from '../../services/api'
 
 interface LoginPageProps {
   setCurrentUser: (user: User) => void
   setUserType: (type: 'hotel' | 'dealer') => void
+}
+
+interface LoginApiResponse {
+  id?: string
+  hotelId?: string
+  name: string
+  email: string
+  password: string
 }
 
 function LoginPage({ setCurrentUser, setUserType }: LoginPageProps): JSX.Element {
@@ -16,7 +24,7 @@ function LoginPage({ setCurrentUser, setUserType }: LoginPageProps): JSX.Element
   const handleLogin = (e: React.FormEvent<HTMLFormElement>): void => {
     e.preventDefault()
     setError('')
-    let obj = {
+    const obj = {
       email: email,
       password: password,
     }
@@ -26,12 +34,17 @@ function LoginPage({ setCurrentUser, setUserType }: LoginPageProps): JSX.Element
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(obj)
-        }).then(res => res.ok ? res.json() : null)
-      : login(obj)
+        }).then(res => res.ok ? res.json() as Promise<LoginApiResponse> : null)
+      : login(obj) as Promise<LoginApiResponse>
 
-    loginPromise.then((res: any) => {
+    loginPromise.then((res: LoginApiResponse | null) => {
       if (res) {
-        const user = { ...res, id: res.hotelId || res.id }
+        const user: User = {
+          id: res.hotelId || res.id || '',
+          name: res.name,
+          email: res.email,
+          password: res.password,
+        }
         setCurrentUser(user)
         setUserType(loginType)
       } else {

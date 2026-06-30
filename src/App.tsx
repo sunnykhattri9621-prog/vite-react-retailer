@@ -39,7 +39,7 @@ function App(): JSX.Element {
     try {
       const saved = localStorage.getItem('hotelOrders')
       return saved ? JSON.parse(saved) : []
-    } catch (e) {
+    } catch {
       return []
     }
   })
@@ -47,7 +47,7 @@ function App(): JSX.Element {
     try {
       const saved = localStorage.getItem('itemPrices')
       return saved ? JSON.parse(saved) : {}
-    } catch (e) {
+    } catch {
       return {}
     }
   })
